@@ -29,11 +29,14 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
-      run: ${{ github.action_path }}/scripts/download-validator.sh "${{ inputs.jackin-version }}"
+        JACKIN_VERSION: ${{ inputs.jackin-version }}
+      run: ${{ github.action_path }}/scripts/download-validator.sh "$JACKIN_VERSION"
 
     - name: Validate agent repo
       shell: bash
-      run: jackin-validate "${{ inputs.path }}"
+      env:
+        AGENT_PATH: ${{ inputs.path }}
+      run: jackin-validate "$AGENT_PATH"
 
     - name: Set up QEMU
       if: inputs.skip-build != 'true'
@@ -46,4 +49,7 @@ runs:
     - name: Build Docker image
       if: inputs.skip-build != 'true'
       shell: bash
-      run: ${{ github.action_path }}/scripts/build-image.sh "${{ inputs.path }}" "${{ inputs.build-platforms }}"
+      env:
+        AGENT_PATH: ${{ inputs.path }}
+        BUILD_PLATFORMS: ${{ inputs.build-platforms }}
+      run: ${{ github.action_path }}/scripts/build-image.sh "$AGENT_PATH" "$BUILD_PLATFORMS"
