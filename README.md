@@ -20,12 +20,25 @@ jobs:
       - uses: jackin-project/validate-agent-action@v1
 ```
 
+To validate against the latest successful `jackin` build on `main` instead of the latest tagged release:
+
+```yaml
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jackin-project/validate-agent-action@v1
+        with:
+          jackin-version: latest-build
+```
+
 ## Inputs
 
 | Input | Default | Description |
 |-------|---------|-------------|
 | `path` | `.` | Path to the agent repo |
-| `jackin-version` | `latest` | Version of jackin-validate to use |
+| `jackin-version` | `latest` | Version of `jackin-validate` to use. Accepts a release version like `0.5.0`, `latest`, or `latest-build` for the newest successful `main` CI artifact |
 | `build-platforms` | `linux/amd64,linux/arm64` | Docker platforms to build |
 | `skip-build` | `false` | Skip Docker build step |
 

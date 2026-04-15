@@ -10,7 +10,7 @@ inputs:
     required: false
     default: '.'
   jackin-version:
-    description: 'Version of jackin-validate to download (e.g. "0.5.0" or "latest")'
+    description: 'Version of jackin-validate to download (for example "0.5.0", "latest", or "latest-build")'
     required: false
     default: 'latest'
   build-platforms:
