@@ -44,11 +44,13 @@ download_from_latest_build() {
   local run_id artifact_id archive checksum
 
   echo "Resolving latest successful ${WORKFLOW_FILE} build for ${target}..."
+  # Pick the first match inside jq rather than piping through `head -n1`:
+  # under `set -o pipefail`, head closing the pipe early can SIGPIPE the
+  # upstream process, surfacing as exit 141 and flaking CI unpredictably.
   run_id=$(gh api -X GET "repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs" \
     -f branch=main \
     -f per_page=20 \
-    --jq '.workflow_runs[] | select(.status == "completed" and .conclusion == "success") | .id' \
-    | head -n1)
+    --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | .[0].id // empty')
 
   if [ -z "$run_id" ]; then
     echo "Failed to resolve a successful ${WORKFLOW_FILE} run on main from ${REPO}" >&2
@@ -56,8 +58,7 @@ download_from_latest_build() {
   fi
 
   artifact_id=$(gh api -X GET "repos/${REPO}/actions/runs/${run_id}/artifacts" \
-    --jq ".artifacts[] | select(.name == \"${artifact_name}\") | .id" \
-    | head -n1)
+    --jq "[.artifacts[] | select(.name == \"${artifact_name}\")] | .[0].id // empty")
 
   if [ -z "$artifact_id" ]; then
     echo "Failed to find artifact ${artifact_name} in workflow run ${run_id}" >&2
