@@ -1,0 +1,9 @@
+# Editor/tool local state
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local test artifacts
+/tmp/
+*.log
