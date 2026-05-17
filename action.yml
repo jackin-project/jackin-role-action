@@ -21,6 +21,26 @@ inputs:
     description: 'Skip the Docker build step'
     required: false
     default: 'false'
+  push:
+    description: 'Push the built image to the registry. Requires image, registry-username, and registry-password.'
+    required: false
+    default: 'false'
+  image:
+    description: 'Full image name including registry (e.g. docker.io/org/image). Required when push is true.'
+    required: false
+    default: ''
+  registry-username:
+    description: 'Registry username for docker login. Required when push is true.'
+    required: false
+    default: ''
+  registry-password:
+    description: 'Registry password for docker login. Required when push is true.'
+    required: false
+    default: ''
+  sign:
+    description: 'Sign the pushed image with cosign keyless signing. Requires push to be true and id-token: write permission.'
+    required: false
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -38,6 +58,13 @@ runs:
         AGENT_PATH: ${{ inputs.path }}
       run: jackin-validate "$AGENT_PATH"
 
+    - name: Login to registry
+      if: inputs.skip-build != 'true' && inputs.push == 'true' && inputs.registry-username != ''
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+      with:
+        username: ${{ inputs.registry-username }}
+        password: ${{ inputs.registry-password }}
+
     - name: Set up QEMU
       if: inputs.skip-build != 'true'
       uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf # v3.2.0
@@ -52,4 +79,19 @@ runs:
       env:
         AGENT_PATH: ${{ inputs.path }}
         BUILD_PLATFORMS: ${{ inputs.build-platforms }}
+        IMAGE: ${{ inputs.image }}
+        PUSH: ${{ inputs.push }}
       run: ${{ github.action_path }}/scripts/build-image.sh "$AGENT_PATH" "$BUILD_PLATFORMS"
+
+    - name: Install cosign
+      if: inputs.skip-build != 'true' && inputs.sign == 'true' && inputs.push == 'true'
+      uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
+
+    - name: Sign image
+      if: inputs.skip-build != 'true' && inputs.sign == 'true' && inputs.push == 'true' && inputs.image != ''
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+      run: |
+        short_sha="${GITHUB_SHA::7}"
+        cosign sign --yes "${IMAGE}:latest" "${IMAGE}:${short_sha}"
