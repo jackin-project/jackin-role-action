@@ -5,15 +5,7 @@ REPO_PATH="${1:-.}"
 IMAGE="${2}"
 PLATFORMS="${3:-linux/amd64,linux/arm64}"
 
-# Extract the construct version tag pinned in the FROM line. jackin-validate
-# already enforces its presence, so this cannot be empty on a valid Dockerfile.
-# Strip any @sha256:... digest pin (added by Renovate's docker:pinDigests) before
-# extracting the tag so "0.1-trixie@sha256:..." yields "0.1-trixie".
-CONSTRUCT_VERSION=$(awk '/^FROM /{
-    ref = $2; sub(/@.*/, "", ref)
-    n = split(ref, parts, ":")
-    if (n > 1) { print parts[2]; exit }
-}' "${REPO_PATH}/Dockerfile")
+CONSTRUCT_VERSION=$(jackin-validate --print-construct-version "${REPO_PATH}")
 
 short_sha="${GITHUB_SHA::7}"
 
@@ -23,7 +15,7 @@ docker buildx build \
   --platform "$PLATFORMS" \
   --tag "${IMAGE}:latest" \
   --tag "${IMAGE}:${short_sha}" \
-  --build-arg "CONSTRUCT_VERSION=${CONSTRUCT_VERSION:-unknown}" \
+  --build-arg "CONSTRUCT_VERSION=${CONSTRUCT_VERSION}" \
   --sbom=true \
   --provenance=true \
   --push \
