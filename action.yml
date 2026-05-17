@@ -1,5 +1,5 @@
 name: 'Validate jackin Agent'
-description: 'Validates a jackin agent repo against the project contract and builds the Docker image multi-platform'
+description: 'Validates a jackin agent repo against the project contract and builds or publishes the Docker image multi-platform'
 branding:
   icon: 'check-circle'
   color: 'green'
@@ -19,6 +19,30 @@ inputs:
     default: 'linux/amd64,linux/arm64'
   skip-build:
     description: 'Skip the Docker build step'
+    required: false
+    default: 'false'
+  push:
+    description: 'Push the image to the registry after building'
+    required: false
+    default: 'false'
+  image:
+    description: 'Full registry image name to publish (e.g. docker.io/projectjackin/jackin-the-architect). Required when push is true.'
+    required: false
+    default: ''
+  registry:
+    description: 'Registry URL for docker login'
+    required: false
+    default: 'https://index.docker.io/v1/'
+  registry-username:
+    description: 'Registry username'
+    required: false
+    default: ''
+  registry-password:
+    description: 'Registry password or token'
+    required: false
+    default: ''
+  sign:
+    description: 'Sign the published image with cosign (keyless, OIDC)'
     required: false
     default: 'false'
 
@@ -46,10 +70,42 @@ runs:
       if: inputs.skip-build != 'true'
       uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca # v3.9.0
 
-    - name: Build Docker image
-      if: inputs.skip-build != 'true'
+    - name: Build Docker image (CI, no push)
+      if: inputs.skip-build != 'true' && inputs.push != 'true'
       shell: bash
       env:
         AGENT_PATH: ${{ inputs.path }}
         BUILD_PLATFORMS: ${{ inputs.build-platforms }}
       run: ${{ github.action_path }}/scripts/build-image.sh "$AGENT_PATH" "$BUILD_PLATFORMS"
+
+    - name: Login to registry
+      if: inputs.push == 'true' && inputs.registry-username != ''
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ inputs.registry-username }}
+        password: ${{ inputs.registry-password }}
+
+    - name: Build and push image
+      if: inputs.skip-build != 'true' && inputs.push == 'true'
+      id: publish
+      shell: bash
+      env:
+        AGENT_PATH: ${{ inputs.path }}
+        IMAGE: ${{ inputs.image }}
+        BUILD_PLATFORMS: ${{ inputs.build-platforms }}
+      run: ${{ github.action_path }}/scripts/publish-image.sh "$AGENT_PATH" "$IMAGE" "$BUILD_PLATFORMS"
+
+    - name: Install cosign
+      if: inputs.push == 'true' && inputs.sign == 'true'
+      uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
+
+    - name: Sign image
+      if: inputs.push == 'true' && inputs.sign == 'true' && inputs.image != ''
+      shell: bash
+      env:
+        IMAGE: ${{ steps.publish.outputs.image }}
+        SHORT_SHA: ${{ steps.publish.outputs.short_sha }}
+      run: |
+        set -euo pipefail
+        cosign sign --yes "${IMAGE}:latest" "${IMAGE}:${SHORT_SHA}"
