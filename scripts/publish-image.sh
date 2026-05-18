@@ -11,7 +11,13 @@ short_sha="${GITHUB_SHA::7}"
 
 echo "Publishing Docker image ${IMAGE} for platforms: ${PLATFORMS}..."
 
+secret_args=()
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    secret_args+=(--secret "id=github_token,env=GITHUB_TOKEN")
+fi
+
 docker buildx build \
+  "${secret_args[@]}" \
   --platform "$PLATFORMS" \
   --tag "${IMAGE}:latest" \
   --tag "${IMAGE}:${short_sha}" \
