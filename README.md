@@ -1,48 +1,77 @@
-# validate-agent-action
+# jackin-role-action
 
-GitHub Action to validate [jackin](https://github.com/jackin-project/jackin) agent repos against the project contract.
+GitHub Action to validate [jackin](https://github.com/jackin-project/jackin) agent role repos against the project contract and publish multi-platform Docker images.
 
 jackin is experimental preview software and has not reached a stable release yet. This action defaults to the newest preview `jackin-role` build so role validation follows the current preview contract.
 
-## Checks
+## CI — validate and build check
 
-1. **Required files** — `Dockerfile`, `jackin.agent.toml`, `.dockerignore`, `.gitignore`
-2. **Dockerfile contract** — final stage must be `FROM projectjackin/construct:trixie`
-3. **Manifest schema** — valid TOML, no unknown fields, env var rules
-4. **Docker build** — multi-platform build (amd64 + arm64)
-
-## Usage
+Use the composite action in your `ci.yml`. It runs Dockerfile linting, jackin contract validation, and a single-platform (`linux/amd64`) build check.
 
 ```yaml
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: jackin-project/validate-agent-action@v1
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: jackin-project/jackin-role-action@75a8a8b124332a631346a8ea81fdb883053745eb # latest
 ```
 
-The default is equivalent to setting `jackin-version: latest-build` explicitly:
-
-```yaml
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: jackin-project/validate-agent-action@v1
-        with:
-          jackin-version: latest-build
-```
-
-## Inputs
+### CI inputs
 
 | Input | Default | Description |
 |-------|---------|-------------|
 | `path` | `.` | Path to the agent repo |
-| `jackin-version` | `latest-build` | Version of `jackin-role` to use. Use `latest-build` for the newest preview validator artifact |
-| `build-platforms` | `linux/amd64,linux/arm64` | Docker platforms to build |
-| `skip-build` | `false` | Skip Docker build step |
+| `jackin-version` | `latest-build` | Version of `jackin-role` to use |
+| `skip-build` | `false` | Skip the Docker build step (validate only) |
+
+### CI checks performed
+
+1. **Dockerfile linting** — `hadolint` enforces Dockerfile best practices
+2. **Required files** — `Dockerfile`, `jackin.role.toml`, `.dockerignore`, `.gitignore`
+3. **Dockerfile contract** — construct base image pinned to an approved version
+4. **Manifest schema** — valid TOML, no unknown fields, env var rules
+5. **Docker build** — `linux/amd64` build check (no push)
+
+## Publish — multi-platform image
+
+Use the reusable workflow in your `publish-image.yml`. It validates the repo, builds `linux/amd64` and `linux/arm64` on native runners (no QEMU), merges the platform images into a multi-arch manifest, and signs the result with cosign.
+
+The image name is read from `published_image` in `jackin.role.toml` — no duplication in workflow YAML.
+
+```yaml
+jobs:
+  publish:
+    uses: jackin-project/jackin-role-action/.github/workflows/publish.yml@75a8a8b124332a631346a8ea81fdb883053745eb # latest
+    permissions:
+      contents: read
+      id-token: write
+    secrets:
+      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
+      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
+```
+
+### Publish inputs
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `jackin-version` | `latest-build` | Version of `jackin-role` to use |
+| `registry` | `https://index.docker.io/v1/` | Registry URL for docker login |
+
+### Publish secrets
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `registry-username` | yes | Registry username |
+| `registry-password` | yes | Registry password or token |
+
+### `jackin.role.toml` — published image
+
+The `published_image` field must be set for the publish workflow to work:
+
+```toml
+published_image = "docker.io/myorg/jackin-my-role"
+```
 
 ## License
 
