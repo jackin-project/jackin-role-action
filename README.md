@@ -2,7 +2,7 @@
 
 GitHub Action to validate [jackin](https://github.com/jackin-project/jackin) agent repos against the project contract.
 
-jackin is experimental preview software and has not reached a stable release yet. This action defaults to the newest preview `jackin-validate` build so role validation follows the current preview contract.
+jackin is experimental preview software and has not reached a stable release yet. This action defaults to the newest preview `jackin-role` build so role validation follows the current preview contract.
 
 ## Checks
 
@@ -40,7 +40,7 @@ jobs:
 | Input | Default | Description |
 |-------|---------|-------------|
 | `path` | `.` | Path to the agent repo |
-| `jackin-version` | `latest-build` | Version of `jackin-validate` to use. Use `latest-build` for the newest preview validator artifact |
+| `jackin-version` | `latest-build` | Version of `jackin-role` to use. Use `latest-build` for the newest preview validator artifact |
 | `build-platforms` | `linux/amd64,linux/arm64` | Docker platforms to build |
 | `skip-build` | `false` | Skip Docker build step |
 
