@@ -133,22 +133,20 @@ jobs:
 
       - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
         with:
-          # Use the docker driver so BuildKit runs inline in the Docker daemon
-          # rather than in a separate container. This ensures host-path secrets
-          # (written by docker/build-push-action to a temp file) are accessible
-          # to the build, which is required for --mount=type=secret to work on
-          # self-hosted runners where the runner workspace may not be bind-mountable
-          # into a docker-container driver's BuildKit container.
-          driver: docker
+          # Explicit docker-container driver so push-by-digest works. Secrets
+          # are passed via secret-envs (runner env) not src=file, avoiding
+          # bind-mount issues on self-hosted runners.
+          driver: docker-container
 
       - uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
         id: build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           context: .
           platforms: ${{ matrix.platform }}
           outputs: type=image,push-by-digest=true,name=${{ needs.validate-and-config.outputs.image }},push=true
-          secrets: |
-            github_token=${{ github.token }}
+          secret-envs: github_token=GITHUB_TOKEN
 
       - name: Export digest
         run: |
@@ -183,6 +181,8 @@ jobs:
           merge-multiple: true
 
       - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        with:
+          driver: docker-container
 
       - uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6
         id: meta
