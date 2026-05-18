@@ -10,7 +10,7 @@ inputs:
     required: false
     default: '.'
   jackin-version:
-    description: 'Version of jackin-validate to download. Defaults to the newest preview validator while jackin is experimental.'
+    description: 'Version of jackin-role to download. Defaults to the newest preview validator while jackin is experimental.'
     required: false
     default: 'latest-build'
   build-platforms:
@@ -49,18 +49,18 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Download jackin-validate
+    - name: Download jackin-role
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
         JACKIN_VERSION: ${{ inputs.jackin-version }}
-      run: ${{ github.action_path }}/scripts/download-validator.sh "$JACKIN_VERSION"
+      run: ${{ github.action_path }}/scripts/download-jackin-role.sh "$JACKIN_VERSION"
 
     - name: Validate agent repo
       shell: bash
       env:
         AGENT_PATH: ${{ inputs.path }}
-      run: jackin-validate "$AGENT_PATH"
+      run: jackin-role validate "$AGENT_PATH"
 
     - name: Set up QEMU
       if: inputs.skip-build != 'true'
