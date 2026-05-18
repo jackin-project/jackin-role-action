@@ -133,15 +133,14 @@ jobs:
 
       - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
         with:
-          # Explicit docker-container driver so push-by-digest works. Secrets
-          # are passed via secret-envs (runner env) not src=file, avoiding
-          # bind-mount issues on self-hosted runners.
           driver: docker-container
+          # Inject GITHUB_TOKEN into the BuildKit daemon container so
+          # secret-envs can read it from the daemon's environment.
+          driver-opts: |
+            env.GITHUB_TOKEN=${{ github.token }}
 
       - uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
         id: build
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         with:
           context: .
           platforms: ${{ matrix.platform }}
