@@ -57,5 +57,5 @@ runs:
         platforms: linux/amd64
         push: false
         load: true
-        build-args: |
-          GITHUB_TOKEN=${{ github.token }}
+        secrets: |
+          github_token=${{ github.token }}

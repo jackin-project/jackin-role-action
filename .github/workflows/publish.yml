@@ -141,11 +141,8 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           outputs: type=image,push-by-digest=true,name=${{ needs.validate-and-config.outputs.image }},push=true
-          # Pass as build-arg since secret mounts are unreliable on self-hosted
-          # runners (hetzner-sentry workspace path inaccessible to Docker daemon).
-          # Token is ephemeral (single workflow run) and image is private.
-          build-args: |
-            GITHUB_TOKEN=${{ github.token }}
+          secrets: |
+            github_token=${{ github.token }}
 
       - name: Export digest
         run: |
