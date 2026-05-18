@@ -1,5 +1,5 @@
 name: 'Validate jackin Agent'
-description: 'Validates a jackin agent repo against the project contract and builds or publishes the Docker image multi-platform'
+description: 'Validates a jackin agent repo against the project contract and runs an amd64 CI build check'
 branding:
   icon: 'check-circle'
   color: 'green'
@@ -13,36 +13,8 @@ inputs:
     description: 'Version of jackin-role to download. Defaults to the newest preview validator while jackin is experimental.'
     required: false
     default: 'latest-build'
-  build-platforms:
-    description: 'Comma-separated Docker platforms to build'
-    required: false
-    default: 'linux/amd64,linux/arm64'
   skip-build:
-    description: 'Skip the Docker build step'
-    required: false
-    default: 'false'
-  push:
-    description: 'Push the image to the registry after building'
-    required: false
-    default: 'false'
-  image:
-    description: 'Full registry image name to publish (e.g. docker.io/projectjackin/jackin-the-architect). Required when push is true.'
-    required: false
-    default: ''
-  registry:
-    description: 'Registry URL for docker login'
-    required: false
-    default: 'https://index.docker.io/v1/'
-  registry-username:
-    description: 'Registry username'
-    required: false
-    default: ''
-  registry-password:
-    description: 'Registry password or token'
-    required: false
-    default: ''
-  sign:
-    description: 'Sign the published image with cosign (keyless, OIDC)'
+    description: 'Skip the Docker build step (validate only)'
     required: false
     default: 'false'
 
@@ -56,58 +28,29 @@ runs:
         JACKIN_VERSION: ${{ inputs.jackin-version }}
       run: ${{ github.action_path }}/scripts/download-jackin-role.sh "$JACKIN_VERSION"
 
+    - name: Lint Dockerfile
+      if: inputs.skip-build != 'true'
+      uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
+      with:
+        dockerfile: ${{ inputs.path }}/Dockerfile
+
     - name: Validate agent repo
       shell: bash
       env:
         AGENT_PATH: ${{ inputs.path }}
       run: jackin-role validate "$AGENT_PATH"
 
-    - name: Set up QEMU
-      if: inputs.skip-build != 'true'
-      uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
-
     - name: Set up Docker Buildx
       if: inputs.skip-build != 'true'
       uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
-    - name: Build Docker image (CI, no push)
-      if: inputs.skip-build != 'true' && inputs.push != 'true'
-      shell: bash
-      env:
-        AGENT_PATH: ${{ inputs.path }}
-        BUILD_PLATFORMS: ${{ inputs.build-platforms }}
-        GITHUB_TOKEN: ${{ github.token }}
-      run: ${{ github.action_path }}/scripts/build-image.sh "$AGENT_PATH" "$BUILD_PLATFORMS"
-
-    - name: Login to registry
-      if: inputs.push == 'true' && inputs.registry-username != ''
-      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+    - name: Build Docker image (CI check, linux/amd64)
+      if: inputs.skip-build != 'true'
+      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
       with:
-        registry: ${{ inputs.registry }}
-        username: ${{ inputs.registry-username }}
-        password: ${{ inputs.registry-password }}
-
-    - name: Build and push image
-      if: inputs.skip-build != 'true' && inputs.push == 'true'
-      id: publish
-      shell: bash
-      env:
-        AGENT_PATH: ${{ inputs.path }}
-        IMAGE: ${{ inputs.image }}
-        BUILD_PLATFORMS: ${{ inputs.build-platforms }}
-        GITHUB_TOKEN: ${{ github.token }}
-      run: ${{ github.action_path }}/scripts/publish-image.sh "$AGENT_PATH" "$IMAGE" "$BUILD_PLATFORMS"
-
-    - name: Install cosign
-      if: inputs.push == 'true' && inputs.sign == 'true'
-      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
-    - name: Sign image
-      if: inputs.push == 'true' && inputs.sign == 'true' && inputs.image != ''
-      shell: bash
-      env:
-        IMAGE: ${{ steps.publish.outputs.image }}
-        SHORT_SHA: ${{ steps.publish.outputs.short_sha }}
-      run: |
-        set -euo pipefail
-        cosign sign --yes "${IMAGE}:latest" "${IMAGE}:${SHORT_SHA}"
+        context: ${{ inputs.path }}
+        platforms: linux/amd64
+        push: false
+        load: true
+        secrets: |
+          github_token=${{ github.token }}
