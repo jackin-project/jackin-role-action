@@ -44,26 +44,31 @@ download_from_latest_build() {
   local run_id artifact_id archive checksum
 
   echo "Resolving latest preview validator build for ${target}..."
-  # Pick the first match inside jq rather than piping through `head -n1`:
-  # under `set -o pipefail`, head closing the pipe early can SIGPIPE the
-  # upstream process, surfacing as exit 141 and flaking CI unpredictably.
-  run_id=$(gh api -X GET "repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs" \
+
+  # Walk recent successful CI runs looking for the first one that actually
+  # uploaded the build-validator artifact. Non-Rust commits (e.g. Docker image
+  # bumps) skip build-validator, so the most-recent successful run may have
+  # no artifacts — scanning avoids a false "not found" failure in that case.
+  run_id=""
+  while IFS= read -r candidate_id; do
+    candidate_artifact_id=$(gh api -X GET "repos/${REPO}/actions/runs/${candidate_id}/artifacts" \
+      --jq "[.artifacts[] | select(.name == \"${artifact_name}\")] | .[0].id // empty")
+    if [ -n "$candidate_artifact_id" ]; then
+      run_id="$candidate_id"
+      artifact_id="$candidate_artifact_id"
+      break
+    fi
+  done < <(gh api -X GET "repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs" \
     -f branch=main \
     -f per_page=20 \
-    --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | .[0].id // empty')
+    --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | .[].id')
 
   if [ -z "$run_id" ]; then
     echo "Failed to resolve a preview validator build from ${REPO}" >&2
     exit 1
   fi
 
-  artifact_id=$(gh api -X GET "repos/${REPO}/actions/runs/${run_id}/artifacts" \
-    --jq "[.artifacts[] | select(.name == \"${artifact_name}\")] | .[0].id // empty")
-
-  if [ -z "$artifact_id" ]; then
-    echo "Failed to find artifact ${artifact_name} in workflow run ${run_id}" >&2
-    exit 1
-  fi
+  echo "Using artifact ${artifact_name} from workflow run ${run_id}"
 
   rm -rf "$artifact_dir" "$artifact_zip"
   gh api -H "Accept: application/vnd.github+json" \
