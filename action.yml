@@ -76,6 +76,7 @@ runs:
       env:
         AGENT_PATH: ${{ inputs.path }}
         BUILD_PLATFORMS: ${{ inputs.build-platforms }}
+        GITHUB_TOKEN: ${{ github.token }}
       run: ${{ github.action_path }}/scripts/build-image.sh "$AGENT_PATH" "$BUILD_PLATFORMS"
 
     - name: Login to registry
@@ -94,6 +95,7 @@ runs:
         AGENT_PATH: ${{ inputs.path }}
         IMAGE: ${{ inputs.image }}
         BUILD_PLATFORMS: ${{ inputs.build-platforms }}
+        GITHUB_TOKEN: ${{ github.token }}
       run: ${{ github.action_path }}/scripts/publish-image.sh "$AGENT_PATH" "$IMAGE" "$BUILD_PLATFORMS"
 
     - name: Install cosign
