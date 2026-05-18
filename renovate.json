@@ -3,5 +3,7 @@
   "extends": [
     "config:best-practices"
   ],
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 20,
   "commitBody": "Signed-off-by: Renovate Bot <renovate@whitesourcesoftware.com>"
 }

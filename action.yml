@@ -54,7 +54,7 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         JACKIN_VERSION: ${{ inputs.jackin-version }}
-      run: ${{ github.action_path }}/scripts/download-validator.sh "$JACKIN_VERSION"
+      run: ${{ github.action_path }}/scripts/download-jackin-role.sh "$JACKIN_VERSION"
 
     - name: Validate agent repo
       shell: bash
