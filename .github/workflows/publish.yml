@@ -25,17 +25,59 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          repository: jackin-project/jackin-role-action
-          ref: ${{ github.workflow_sha }}
-          path: .jackin-role-action
-
       - name: Download jackin-role
         env:
           GH_TOKEN: ${{ github.token }}
-          JACKIN_VERSION: ${{ inputs.jackin-version }}
-        run: .jackin-role-action/scripts/download-jackin-role.sh "$JACKIN_VERSION"
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.jackin-version }}"
+          REPO="jackin-project/jackin"
+          WORKFLOW_FILE="ci.yml"
+
+          case "$(uname -m)" in
+            x86_64)  TARGET="x86_64-unknown-linux-gnu" ;;
+            aarch64) TARGET="aarch64-unknown-linux-gnu" ;;
+            *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+
+          if [ "$VERSION" = "latest" ] || [ "$VERSION" = "latest-build" ]; then
+            ARTIFACT_NAME="jackin-role-${TARGET}"
+            ARTIFACT_DIR="/tmp/jackin-role-artifact"
+            ARTIFACT_ZIP="/tmp/jackin-role-artifact.zip"
+            run_id=""
+            while IFS= read -r candidate_id; do
+              candidate_artifact_id=$(gh api -X GET "repos/${REPO}/actions/runs/${candidate_id}/artifacts" \
+                --jq "[.artifacts[] | select(.name == \"${ARTIFACT_NAME}\")] | .[0].id // empty")
+              if [ -n "$candidate_artifact_id" ]; then
+                run_id="$candidate_id"
+                artifact_id="$candidate_artifact_id"
+                break
+              fi
+            done < <(gh api -X GET "repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs" \
+              -f branch=main -f per_page=20 \
+              --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | .[].id')
+            [ -z "$run_id" ] && { echo "Failed to resolve preview build" >&2; exit 1; }
+            rm -rf "$ARTIFACT_DIR" "$ARTIFACT_ZIP"
+            gh api -H "Accept: application/vnd.github+json" \
+              "repos/${REPO}/actions/artifacts/${artifact_id}/zip" > "$ARTIFACT_ZIP"
+            unzip -oq "$ARTIFACT_ZIP" -d "$ARTIFACT_DIR"
+            archive=$(find "$ARTIFACT_DIR" -maxdepth 1 -name 'jackin-role-*.tar.gz' -print -quit)
+            checksum=$(find "$ARTIFACT_DIR" -maxdepth 1 -name 'jackin-role-*.tar.gz.sha256' -print -quit)
+            (cd "$ARTIFACT_DIR" && sha256sum --check "$(basename "$checksum")")
+            tar -xzf "$archive" -C /tmp jackin-role
+          else
+            VERSION_CLEAN="${VERSION#v}"
+            TAG="v${VERSION_CLEAN}"
+            VERSION_NUM="${TAG#v}"
+            ARCHIVE="jackin-${VERSION_NUM}-${TARGET}.tar.gz"
+            curl -fsSL "https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}" -o "/tmp/${ARCHIVE}"
+            curl -fsSL "https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}.sha256" -o "/tmp/${ARCHIVE}.sha256"
+            (cd /tmp && sha256sum --check "${ARCHIVE}.sha256")
+            tar -xzf "/tmp/${ARCHIVE}" -C /tmp jackin-role
+          fi
+
+          chmod +x /tmp/jackin-role
+          echo "/tmp" >> "$GITHUB_PATH"
 
       - uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
         with:
