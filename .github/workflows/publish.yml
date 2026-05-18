@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           repository: jackin-project/jackin-role-action
-          ref: ${{ github.action_ref }}
+          ref: ${{ github.workflow_sha }}
           path: .jackin-role-action
 
       - name: Download jackin-role
