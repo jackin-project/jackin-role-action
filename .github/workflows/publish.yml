@@ -45,7 +45,8 @@ jobs:
         id: config
         run: |
           jackin-role validate .
-          echo "image=$(jackin-role published-image)" >> $GITHUB_OUTPUT
+          raw=$(jackin-role published-image)
+          echo "image=${raw%:*}" >> $GITHUB_OUTPUT
 
   build:
     needs: validate-and-config
