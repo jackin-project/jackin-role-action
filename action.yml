@@ -36,6 +36,7 @@ runs:
         # DL3004: construct base image intentionally exposes sudo for dev containers.
         # Per-repo .hadolint.yaml can add further suppressions.
         ignore: DL3004
+        failure-threshold: error
         config: ${{ inputs.path }}/.hadolint.yaml
 
     - name: Validate agent repo
