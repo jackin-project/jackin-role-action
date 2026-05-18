@@ -35,7 +35,7 @@ runs:
         dockerfile: ${{ inputs.path }}/Dockerfile
         # DL3004: construct base image intentionally exposes sudo for dev containers.
         # Per-repo .hadolint.yaml can add further suppressions.
-        override-error: DL3004
+        ignore: DL3004
         config: ${{ inputs.path }}/.hadolint.yaml
 
     - name: Validate agent repo
