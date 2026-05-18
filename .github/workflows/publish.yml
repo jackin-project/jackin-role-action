@@ -134,10 +134,6 @@ jobs:
       - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
         with:
           driver: docker-container
-          # Inject GITHUB_TOKEN into the BuildKit daemon container so
-          # secret-envs can read it from the daemon's environment.
-          driver-opts: |
-            env.GITHUB_TOKEN=${{ github.token }}
 
       - uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
         id: build
@@ -145,7 +141,11 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           outputs: type=image,push-by-digest=true,name=${{ needs.validate-and-config.outputs.image }},push=true
-          secret-envs: github_token=GITHUB_TOKEN
+          # Pass as build-arg since secret mounts are unreliable on self-hosted
+          # runners (hetzner-sentry workspace path inaccessible to Docker daemon).
+          # Token is ephemeral (single workflow run) and image is private.
+          build-args: |
+            GITHUB_TOKEN=${{ github.token }}
 
       - name: Export digest
         run: |
