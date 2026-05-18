@@ -35,7 +35,7 @@ jobs:
 
 ## Publish — multi-platform image
 
-Use the reusable workflow in your `publish-image.yml`. It validates the repo, builds `linux/amd64` and `linux/arm64` on native runners (no QEMU), merges the platform images into a multi-arch manifest, and signs the result with cosign.
+Use the reusable workflow in your `publish-image.yml`. It validates the repo, builds `linux/amd64` and `linux/arm64`, merges the platform images into a multi-arch manifest, and signs the result with cosign.
 
 The image name is read from `published_image` in `jackin.role.toml` — no duplication in workflow YAML.
 
@@ -51,12 +51,34 @@ jobs:
       registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
 ```
 
+By default, `linux/amd64` runs on `ubuntu-24.04` and `linux/arm64` runs on `ubuntu-24.04-arm` (native, no QEMU). To use self-hosted runners, pass `runner-amd64`, `runner-arm64`, and `runner-merge`. When `runner-amd64` and `runner-arm64` are the same label, QEMU is used automatically for the arm64 build.
+
+```yaml
+# Self-hosted runners (arm64 via QEMU on the same x86 runner)
+jobs:
+  publish:
+    uses: jackin-project/jackin-role-action/.github/workflows/publish.yml@52d91d33851d2f346316264831d1505a4bce57f2 # latest
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      runner-amd64: hetzner-sentry
+      runner-arm64: hetzner-sentry
+      runner-merge: hetzner-sentry
+    secrets:
+      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
+      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
+```
+
 ### Publish inputs
 
 | Input | Default | Description |
 |-------|---------|-------------|
 | `jackin-version` | `latest-build` | Version of `jackin-role` to use |
 | `registry` | `https://index.docker.io/v1/` | Registry URL for docker login |
+| `runner-amd64` | `ubuntu-24.04` | Runner label for the `linux/amd64` build job |
+| `runner-arm64` | `ubuntu-24.04-arm` | Runner label for the `linux/arm64` build job. When equal to `runner-amd64`, QEMU is used automatically |
+| `runner-merge` | `ubuntu-24.04` | Runner label for the manifest merge and sign job |
 
 ### Publish secrets
 

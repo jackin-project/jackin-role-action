@@ -11,6 +11,18 @@ on:
         description: 'Registry URL for docker login'
         type: string
         default: 'https://index.docker.io/v1/'
+      runner-amd64:
+        description: 'Runner label for linux/amd64 build job'
+        type: string
+        default: 'ubuntu-24.04'
+      runner-arm64:
+        description: 'Runner label for linux/arm64 build job. When set to the same value as runner-amd64, QEMU is used for cross-platform emulation.'
+        type: string
+        default: 'ubuntu-24.04-arm'
+      runner-merge:
+        description: 'Runner label for the manifest merge and sign job'
+        type: string
+        default: 'ubuntu-24.04'
     secrets:
       registry-username:
         required: true
@@ -19,9 +31,10 @@ on:
 
 jobs:
   validate-and-config:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner-amd64 }}
     outputs:
       image: ${{ steps.config.outputs.image }}
+      use-qemu: ${{ steps.config.outputs.use-qemu }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -94,6 +107,12 @@ jobs:
           jackin-role validate .
           raw=$(jackin-role published-image)
           echo "image=${raw%:*}" >> $GITHUB_OUTPUT
+          # When both runners are the same label, arm64 runs on x86 hardware and needs QEMU.
+          if [ "${{ inputs.runner-amd64 }}" = "${{ inputs.runner-arm64 }}" ]; then
+            echo "use-qemu=true" >> $GITHUB_OUTPUT
+          else
+            echo "use-qemu=false" >> $GITHUB_OUTPUT
+          fi
 
   build:
     needs: validate-and-config
@@ -102,12 +121,16 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
-            runner: ubuntu-24.04
+            runner: ${{ inputs.runner-amd64 }}
           - platform: linux/arm64
-            runner: ubuntu-24.04-arm
+            runner: ${{ inputs.runner-arm64 }}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up QEMU
+        if: needs.validate-and-config.outputs.use-qemu == 'true' && matrix.platform == 'linux/arm64'
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
 
       - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
         with:
@@ -141,7 +164,7 @@ jobs:
 
   merge:
     needs: [validate-and-config, build]
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner-merge }}
     permissions:
       contents: read
       id-token: write
