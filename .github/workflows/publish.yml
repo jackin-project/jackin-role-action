@@ -210,5 +210,4 @@ jobs:
           COSIGN_EXPERIMENTAL: "1"
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          cosign sign --yes $(echo "$TAGS" | tr '
-' ' ')
+          cosign sign --yes $(echo "$TAGS" | tr '\n' ' ')
