@@ -34,6 +34,7 @@ jobs:
     runs-on: ${{ inputs.runner-amd64 }}
     outputs:
       image: ${{ steps.config.outputs.image }}
+      construct_version: ${{ steps.config.outputs.construct_version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -106,6 +107,7 @@ jobs:
           jackin-role validate .
           raw=$(jackin-role published-image)
           echo "image=${raw%:*}" >> $GITHUB_OUTPUT
+          echo "construct_version=$(jackin-role construct-version .)" >> $GITHUB_OUTPUT
 
   build:
     needs: validate-and-config
@@ -141,6 +143,9 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           outputs: type=image,push-by-digest=true,name=${{ needs.validate-and-config.outputs.image }},push=true
+          build-args: |
+            CONSTRUCT_VERSION=${{ needs.validate-and-config.outputs.construct_version }}
+            ROLE_GIT_SHA=${{ github.sha }}
           secrets: |
             github_token=${{ github.token }}
 
