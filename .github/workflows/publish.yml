@@ -28,6 +28,9 @@ on:
         required: true
       registry-password:
         required: true
+      gh-readonly-token:
+        required: false
+        description: 'Read-only GitHub token for authenticated API access (avoids rate limiting when downloading dependencies)'
 
 jobs:
   validate-and-config:
@@ -147,7 +150,7 @@ jobs:
             CONSTRUCT_VERSION=${{ needs.validate-and-config.outputs.construct_version }}
             ROLE_GIT_SHA=${{ github.sha }}
           secrets: |
-            github_token=${{ github.token }}
+            github_token=${{ secrets.gh-readonly-token || github.token }}
 
       - name: Export digest
         run: |
@@ -207,4 +210,5 @@ jobs:
           COSIGN_EXPERIMENTAL: "1"
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          cosign sign --yes $(echo "$TAGS" | tr '\n' ' ')
+          cosign sign --yes $(echo "$TAGS" | tr '
+' ' ')
