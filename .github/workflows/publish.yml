@@ -44,9 +44,10 @@ jobs:
       - name: Download jackin-role
         env:
           GH_TOKEN: ${{ github.token }}
+          JACKIN_VERSION: ${{ inputs.jackin-version }}
         run: |
           set -euo pipefail
-          VERSION="${{ inputs.jackin-version }}"
+          VERSION="${JACKIN_VERSION}"
           REPO="jackin-project/jackin"
           WORKFLOW_FILE="ci.yml"
 
