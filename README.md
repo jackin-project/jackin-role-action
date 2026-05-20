@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: jackin-project/jackin-role-action@75a8a8b124332a631346a8ea81fdb883053745eb # latest
+      - uses: jackin-project/jackin-role-action@fe73996146153765c69e3334269e18779e8f3bb9 # latest
 ```
 
 ### CI inputs
@@ -42,7 +42,7 @@ The image name is read from `published_image` in `jackin.role.toml` — no dupli
 ```yaml
 jobs:
   publish:
-    uses: jackin-project/jackin-role-action/.github/workflows/publish.yml@75a8a8b124332a631346a8ea81fdb883053745eb # latest
+    uses: jackin-project/jackin-role-action/.github/workflows/publish.yml@fe73996146153765c69e3334269e18779e8f3bb9 # latest
     permissions:
       contents: read
       id-token: write
@@ -51,23 +51,33 @@ jobs:
       registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
 ```
 
-By default, `linux/amd64` runs on `ubuntu-24.04` and `linux/arm64` runs on `ubuntu-24.04-arm` (native, no QEMU). To use self-hosted runners, pass `runner-amd64`, `runner-arm64`, and `runner-merge`. When `runner-amd64` and `runner-arm64` are the same label, QEMU is used automatically for the arm64 build.
+By default, `linux/amd64` runs on `ubuntu-24.04` and `linux/arm64` runs on `ubuntu-24.04-arm` (native, no QEMU). To use self-hosted runners, pass `runner-amd64`, `runner-arm64`, and `runner-merge`:
 
 ```yaml
-# Self-hosted runners (arm64 via QEMU on the same x86 runner)
+# Self-hosted runners — native amd64 and arm64
 jobs:
   publish:
-    uses: jackin-project/jackin-role-action/.github/workflows/publish.yml@52d91d33851d2f346316264831d1505a4bce57f2 # latest
+    uses: jackin-project/jackin-role-action/.github/workflows/publish.yml@fe73996146153765c69e3334269e18779e8f3bb9 # latest
     permissions:
       contents: read
       id-token: write
     with:
-      runner-amd64: hetzner-sentry
-      runner-arm64: hetzner-sentry
-      runner-merge: hetzner-sentry
+      runner-amd64: my-amd64-runner
+      runner-arm64: my-arm64-runner
+      runner-merge: my-amd64-runner
     secrets:
       registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
       registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
+```
+
+When `runner-amd64` and `runner-arm64` are set to the same label, QEMU is used automatically for the `linux/arm64` build:
+
+```yaml
+# Single self-hosted runner — arm64 via QEMU
+    with:
+      runner-amd64: my-runner
+      runner-arm64: my-runner
+      runner-merge: my-runner
 ```
 
 ### Publish inputs
@@ -86,6 +96,118 @@ jobs:
 |--------|----------|-------------|
 | `registry-username` | yes | Registry username |
 | `registry-password` | yes | Registry password or token |
+| `github-readonly-token` | no | Read-only GitHub token passed into the Docker build as the `github_token` secret. Avoids API rate limits when the Dockerfile downloads GitHub-hosted tools (mise, cargo-binstall, etc.). Falls back to `github.token` if omitted. |
+
+### Build caching
+
+The publish workflow uses registry-backed Docker layer caching. After each build, two per-platform cache manifests are written to the same repository:
+
+- `<image>:buildcache-amd64`
+- `<image>:buildcache-arm64`
+
+`mode=max` exports all intermediate layers, not just the final image. Expensive tool-install layers (Rust toolchain, Java runtime, Node, etc.) are cache hits on subsequent builds as long as their `ARG` values and parent layers have not changed.
+
+**The first build after creating a new role repo is always cold** — it populates the cache. Subsequent builds with no Dockerfile changes typically complete in under a minute.
+
+Cache tags are written using the same `registry-username` / `registry-password` secrets. No additional credentials are needed.
+
+## Dockerfile best practices for role authors
+
+### Pin every tool version with an ARG
+
+Every tool installed in the Dockerfile should have a dedicated `ARG` so that bumping one version only invalidates that tool's layer and the layers that follow it:
+
+```dockerfile
+ARG RUST_VERSION=1.85.0
+ARG NODE_VERSION=24.0.0
+ARG CARGO_BINSTALL_VERSION=1.19.1
+```
+
+Avoid `latest`, `lts`, or unversioned installs — they produce non-deterministic layers that can bust the registry cache when the resolved version changes.
+
+### One RUN per tool (deliberate layer separation)
+
+Put each tool installation in its own `RUN` instruction, keyed to its version `ARG`. This trips hadolint `DL3059` but the cache benefit is intentional — suppress with a comment:
+
+```dockerfile
+# Per-tool RUNs are deliberate: bumping one ARG only invalidates that
+# tool's layer. Trips hadolint DL3059; the cache reuse is worth it.
+RUN --mount=type=secret,id=github_token,uid=1000,required=false \
+    GITHUB_TOKEN=$(cat /run/secrets/github_token 2>/dev/null || true) \
+    mise install "rust@${RUST_VERSION}" && \
+    mise use -g --pin "rust@${RUST_VERSION}"
+
+RUN --mount=type=secret,id=github_token,uid=1000,required=false \
+    GITHUB_TOKEN=$(cat /run/secrets/github_token 2>/dev/null || true) \
+    mise install "node@${NODE_VERSION}" && \
+    mise use -g --pin "node@${NODE_VERSION}"
+```
+
+### Order layers by stability (slowest-changing first)
+
+Layers later in the Dockerfile inherit cache invalidation from all layers above them. Place the largest, least-frequently-bumped downloads first. A version bump to a volatile tool should not force a re-download of a large stable runtime.
+
+Recommended order: `large runtimes (JDK, etc.) → build tools (protoc, cmake) → Rust → Node/Bun → cargo tools → npm globals → agent tooling (caveman, etc.)`
+
+### Use `cargo binstall` instead of `cargo install`
+
+`cargo install` compiles crates from source — this can add 3–10 minutes per crate. `cargo-binstall` downloads prebuilt binaries from GitHub Releases instead.
+
+Install `cargo-binstall` via mise first (own layer, own version ARG), then use it for cargo tools:
+
+```dockerfile
+ARG CARGO_BINSTALL_VERSION=1.19.1
+
+RUN --mount=type=secret,id=github_token,uid=1000,required=false \
+    GITHUB_TOKEN=$(cat /run/secrets/github_token 2>/dev/null || true) \
+    mise install "cargo-binstall@${CARGO_BINSTALL_VERSION}" && \
+    mise use -g --pin "cargo-binstall@${CARGO_BINSTALL_VERSION}"
+
+RUN --mount=type=secret,id=github_token,uid=1000,required=false \
+    --mount=type=cache,target=/home/agent/.cargo/registry,uid=1000 \
+    --mount=type=cache,target=/home/agent/.cargo/git,uid=1000 \
+    GITHUB_TOKEN=$(cat /run/secrets/github_token 2>/dev/null || true) \
+    . ~/.profile && \
+    cargo binstall --no-confirm cargo-nextest cargo-watch lychee
+```
+
+### Use BuildKit cache mounts for Cargo
+
+`--mount=type=cache` on `.cargo/registry` and `.cargo/git` preserves the crate registry across layer rebuilds. On **persistent (self-hosted) runners**, this means a Rust version bump does not re-download all crates — only the compilation step is repeated. On ephemeral runners (GitHub-hosted), cache mounts have no cross-run benefit; the registry cache handles that case instead.
+
+### Use apt cache mounts for the system package layer
+
+The same principle applies to `apt-get`. Cache mounts speed up the apt layer when the base image bumps:
+
+```dockerfile
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    sudo apt-get update && \
+    sudo apt-get install -y --no-install-recommends \
+    build-essential libssl-dev openssl pkg-config && \
+    sudo apt-get autoremove -y
+```
+
+When using cache mounts, omit the final `rm -rf /var/cache/apt /var/lib/apt` cleanup — those directories are the cache and must not be removed from the mount.
+
+### Pass `github-readonly-token` to avoid rate limiting
+
+If your Dockerfile downloads tools from GitHub (via mise, `cargo-binstall`, or direct `curl`), pass a read-only GitHub token as a build secret. Without it, GitHub's unauthenticated rate limit (60 requests/hour per IP) can cause flaky failures on shared runners.
+
+In `publish-image.yml`:
+
+```yaml
+secrets:
+  github-readonly-token: ${{ secrets.GH_READONLY_TOKEN }}
+```
+
+In the Dockerfile:
+
+```dockerfile
+RUN --mount=type=secret,id=github_token,uid=1000,required=false \
+    GITHUB_TOKEN=$(cat /run/secrets/github_token 2>/dev/null || true) \
+    mise install "rust@${RUST_VERSION}"
+```
 
 ### `jackin.role.toml` — published image
 
