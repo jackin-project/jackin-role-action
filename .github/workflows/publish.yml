@@ -147,6 +147,8 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           outputs: type=image,push-by-digest=true,name=${{ needs.validate-and-config.outputs.image }},push=true
+          cache-from: type=registry,ref=${{ needs.validate-and-config.outputs.image }}:buildcache-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          cache-to: type=registry,ref=${{ needs.validate-and-config.outputs.image }}:buildcache-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }},mode=max
           labels: |
             jackin.construct_version=${{ needs.validate-and-config.outputs.construct_version }}
             jackin.role_git_sha=${{ github.sha }}
