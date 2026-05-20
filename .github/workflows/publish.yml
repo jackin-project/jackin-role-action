@@ -28,7 +28,7 @@ on:
         required: true
       registry-password:
         required: true
-      gh-readonly-token:
+      github-readonly-token:
         required: false
         description: 'Read-only GitHub token for authenticated API access (avoids rate limiting when downloading dependencies)'
 
@@ -151,7 +151,7 @@ jobs:
             jackin.construct_version=${{ needs.validate-and-config.outputs.construct_version }}
             jackin.role_git_sha=${{ github.sha }}
           secrets: |
-            github_token=${{ secrets.gh-readonly-token || github.token }}
+            github_token=${{ secrets.github-readonly-token || github.token }}
 
       - name: Export digest
         run: |
