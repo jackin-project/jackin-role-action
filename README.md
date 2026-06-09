@@ -173,6 +173,27 @@ RUN --mount=type=secret,id=github_token,uid=1000,required=false \
     cargo binstall --no-confirm cargo-nextest cargo-watch lychee
 ```
 
+### Use BuildKit cache mounts for mise downloads
+
+The construct image runs as `agent` with `HOME=/home/agent`. Its mise defaults are:
+
+- cache: `/home/agent/.cache/mise`
+- downloads: `/home/agent/.local/share/mise/downloads`
+- installs: `/home/agent/.local/share/mise/installs`
+
+Cache the first two locations whenever a Dockerfile installs tools with mise. Do **not** cache-mount the installs directory: BuildKit cache mount contents are not committed into the final image, so tools installed there would be missing at runtime.
+
+```dockerfile
+RUN mkdir -p "${HOME}/.cache/mise" "${HOME}/.local/share/mise/downloads"
+
+RUN --mount=type=secret,id=github_token,uid=1000,required=false \
+    --mount=type=cache,target=/home/agent/.cache/mise,uid=1000 \
+    --mount=type=cache,target=/home/agent/.local/share/mise/downloads,uid=1000 \
+    GITHUB_TOKEN=$(cat /run/secrets/github_token 2>/dev/null || true) \
+    mise install "node@${NODE_VERSION}" && \
+    mise use -g --pin "node@${NODE_VERSION}"
+```
+
 ### Use BuildKit cache mounts for Cargo
 
 `--mount=type=cache` on `.cargo/registry` and `.cargo/git` preserves the crate registry across layer rebuilds. On **persistent (self-hosted) runners**, this means a Rust version bump does not re-download all crates — only the compilation step is repeated. On ephemeral runners (GitHub-hosted), cache mounts have no cross-run benefit; the registry cache handles that case instead.
