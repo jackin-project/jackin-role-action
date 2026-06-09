@@ -6,7 +6,7 @@ jackin is experimental preview software and has not reached a stable release yet
 
 ## CI — validate and build check
 
-Use the composite action in your `ci.yml`. It runs Dockerfile linting, jackin contract validation, and a single-platform (`linux/amd64`) build check.
+Use the composite action in your `ci.yml`. It runs Dockerfile linting, jackin contract validation, and a single-platform (`linux/amd64`) build check. The build check uses the GitHub Actions BuildKit cache, scoped by repository, path, and platform, so pull request validation can reuse expensive layers across runs.
 
 ```yaml
 jobs:
@@ -99,6 +99,8 @@ When `runner-amd64` and `runner-arm64` are set to the same label, QEMU is used a
 | `github-readonly-token` | no | Read-only GitHub token passed into the Docker build as the `github_token` secret. Avoids API rate limits when the Dockerfile downloads GitHub-hosted tools (mise, cargo-binstall, etc.). Falls back to `github.token` if omitted. |
 
 ### Build caching
+
+The CI build check uses GitHub Actions cache storage through BuildKit's `type=gha` backend. This cache is best for pull request validation and branch builds where the image is not pushed.
 
 The publish workflow uses registry-backed Docker layer caching. After each build, two per-platform cache manifests are written to the same repository:
 

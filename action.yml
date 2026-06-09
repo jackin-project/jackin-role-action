@@ -57,5 +57,7 @@ runs:
         platforms: linux/amd64
         push: false
         load: true
+        cache-from: type=gha,scope=${{ github.repository }}-${{ inputs.path }}-linux-amd64
+        cache-to: type=gha,scope=${{ github.repository }}-${{ inputs.path }}-linux-amd64,mode=max
         secrets: |
           github_token=${{ github.token }}
