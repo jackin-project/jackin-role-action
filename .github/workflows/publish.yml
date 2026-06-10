@@ -110,8 +110,8 @@ jobs:
         run: |
           jackin-role validate .
           raw=$(jackin-role published-image)
-          echo "image=${raw%:*}" >> $GITHUB_OUTPUT
-          echo "construct_version=$(jackin-role construct-version .)" >> $GITHUB_OUTPUT
+          echo "image=${raw%:*}" >> "$GITHUB_OUTPUT"
+          echo "construct_version=$(jackin-role construct-version .)" >> "$GITHUB_OUTPUT"
 
   build:
     needs: validate-and-config
@@ -147,7 +147,9 @@ jobs:
           context: .
           platforms: ${{ matrix.platform }}
           outputs: type=image,push-by-digest=true,name=${{ needs.validate-and-config.outputs.image }},push=true
-          cache-from: type=registry,ref=${{ needs.validate-and-config.outputs.image }}:buildcache-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          cache-from: |
+            type=registry,ref=${{ needs.validate-and-config.outputs.image }}:buildcache-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+            ${{ matrix.platform == 'linux/amd64' && format('type=gha,scope={0}-.-linux-amd64', github.repository) || '' }}
           cache-to: type=registry,ref=${{ needs.validate-and-config.outputs.image }}:buildcache-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }},mode=max
           labels: |
             jackin.construct_version=${{ needs.validate-and-config.outputs.construct_version }}
@@ -201,10 +203,13 @@ jobs:
 
       - name: Create and push manifest list
         working-directory: /tmp/digests
+        env:
+          IMAGE: ${{ needs.validate-and-config.outputs.image }}
         run: |
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ needs.validate-and-config.outputs.image }}@sha256:%s ' *)
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          digests=$(printf "${IMAGE}@sha256:%s " *)
+          # shellcheck disable=SC2086  # intentional word splitting: both are argument lists
+          docker buildx imagetools create $tags $digests
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
@@ -213,4 +218,4 @@ jobs:
           COSIGN_EXPERIMENTAL: "1"
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          cosign sign --yes $(echo "$TAGS" | tr '\n' ' ')
+          echo "$TAGS" | xargs cosign sign --yes
