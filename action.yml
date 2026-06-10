@@ -17,6 +17,13 @@ inputs:
     description: 'Skip the Docker build step (validate only)'
     required: false
     default: 'false'
+  registry-cache-image:
+    description: >-
+      Optional image whose registry build cache (<image>:buildcache-amd64,
+      written by the publish workflow) is also used as cache-from for the CI
+      build, so PR CI starts warm from the last published layers.
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -57,7 +64,9 @@ runs:
         platforms: linux/amd64
         push: false
         load: true
-        cache-from: type=gha,scope=${{ github.repository }}-${{ inputs.path }}-linux-amd64
+        cache-from: |
+          type=gha,scope=${{ github.repository }}-${{ inputs.path }}-linux-amd64
+          ${{ inputs.registry-cache-image != '' && format('type=registry,ref={0}:buildcache-amd64', inputs.registry-cache-image) || '' }}
         cache-to: type=gha,scope=${{ github.repository }}-${{ inputs.path }}-linux-amd64,mode=max
         secrets: |
           github_token=${{ github.token }}
