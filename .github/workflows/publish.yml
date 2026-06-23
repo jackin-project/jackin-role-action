@@ -37,7 +37,7 @@ jobs:
     runs-on: ${{ inputs.runner-amd64 }}
     outputs:
       image: ${{ steps.config.outputs.image }}
-      construct_version: ${{ steps.config.outputs.construct_version }}
+      labels: ${{ steps.config.outputs.labels }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
@@ -109,9 +109,12 @@ jobs:
         id: config
         run: |
           jackin-role validate .
-          raw=$(jackin-role published-image)
-          echo "image=${raw%:*}" >> "$GITHUB_OUTPUT"
-          echo "construct_version=$(jackin-role construct-version .)" >> "$GITHUB_OUTPUT"
+          echo "image=$(jackin-role published-image-repository .)" >> "$GITHUB_OUTPUT"
+          {
+            echo "labels<<EOF"
+            jackin-role publish-labels --role-git-sha "${GITHUB_SHA}" .
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
   build:
     needs: validate-and-config
@@ -151,9 +154,7 @@ jobs:
             type=registry,ref=${{ needs.validate-and-config.outputs.image }}:buildcache-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
             ${{ matrix.platform == 'linux/amd64' && format('type=gha,scope={0}-.-linux-amd64', github.repository) || '' }}
           cache-to: type=registry,ref=${{ needs.validate-and-config.outputs.image }}:buildcache-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }},mode=max
-          labels: |
-            jackin.construct_version=${{ needs.validate-and-config.outputs.construct_version }}
-            jackin.role_git_sha=${{ github.sha }}
+          labels: ${{ needs.validate-and-config.outputs.labels }}
           secrets: |
             github_token=${{ secrets.github-readonly-token || github.token }}
 
