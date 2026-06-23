@@ -15,13 +15,22 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
+      - name: Prepare Renovate workspace
+        run: |
+          sudo rm -rf "/tmp/renovate-${GITHUB_RUN_ID}"
+          mkdir -p "/tmp/renovate-${GITHUB_RUN_ID}/cache"
+          chmod -R 777 "/tmp/renovate-${GITHUB_RUN_ID}"
+
       - name: Cache Renovate repository cache
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
-          path: /tmp/renovate/cache
+          path: /tmp/renovate-${{ github.run_id }}/cache
           key: renovate-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
             renovate-${{ runner.os }}-
+
+      - name: Allow Renovate container workspace writes
+        run: chmod -R 777 "/tmp/renovate-${GITHUB_RUN_ID}"
 
       - name: Self-hosted Renovate
         uses: renovatebot/github-action@8217b3fc286df088d7c27f3255fe8414463bc0fd # v46.1.15
@@ -30,6 +39,7 @@ jobs:
         env:
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_ONBOARDING: false
+          RENOVATE_BASE_DIR: /tmp/renovate-${{ github.run_id }}
           RENOVATE_REPOSITORY_CACHE: enabled
           # Pin the git author identity so the DCO sign-off trailer in
           # renovate.json::commitBody always matches the commit-author
@@ -41,4 +51,4 @@ jobs:
 
       - name: Fix Renovate cache ownership for save
         if: always()
-        run: sudo chown -R "$(whoami)" /tmp/renovate 2>/dev/null || true
+        run: sudo chown -R "$(whoami)" "/tmp/renovate-${GITHUB_RUN_ID}" 2>/dev/null || true
