@@ -33,7 +33,7 @@ jobs:
         run: chmod -R 777 "/tmp/renovate-${GITHUB_RUN_ID}"
 
       - name: Self-hosted Renovate
-        uses: renovatebot/github-action@8217b3fc286df088d7c27f3255fe8414463bc0fd # v46.1.15
+        uses: renovatebot/github-action@dd5302ec17783b2fc721b19ae7209b57b1587765 # v46.1.17
         with:
           token: ${{ secrets.RENOVATE_TOKEN }}
         env:
