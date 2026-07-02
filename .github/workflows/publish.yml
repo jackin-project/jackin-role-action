@@ -39,7 +39,7 @@ jobs:
       image: ${{ steps.config.outputs.image }}
       labels: ${{ steps.config.outputs.labels }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Download jackin-role
         env:
@@ -128,7 +128,7 @@ jobs:
             runner: ${{ inputs.runner-arm64 }}
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Set up QEMU
         if: inputs.runner-amd64 == inputs.runner-arm64 && matrix.platform == 'linux/arm64'
