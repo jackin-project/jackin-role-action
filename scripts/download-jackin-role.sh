@@ -116,3 +116,5 @@ if [ "$VERSION" = "latest" ] || [ "$VERSION" = "latest-build" ]; then
 else
   echo "jackin-role ${TAG} installed"
 fi
+echo "Installed validator:"
+/tmp/jackin-role --version
