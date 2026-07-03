@@ -74,6 +74,7 @@ jobs:
               -f branch=main -f per_page=20 \
               --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | .[].id')
             [ -z "$run_id" ] && { echo "Failed to resolve preview build" >&2; exit 1; }
+            echo "Using artifact ${ARTIFACT_NAME} from workflow run ${run_id}"
             rm -rf "$ARTIFACT_DIR" "$ARTIFACT_ZIP"
             gh api -H "Accept: application/vnd.github+json" \
               "repos/${REPO}/actions/artifacts/${artifact_id}/zip" > "$ARTIFACT_ZIP"
@@ -95,6 +96,8 @@ jobs:
 
           chmod +x /tmp/jackin-role
           echo "/tmp" >> "$GITHUB_PATH"
+          echo "Installed validator:"
+          /tmp/jackin-role --version
 
       - uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
         with:
