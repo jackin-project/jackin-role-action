@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Alexey Zhokhov
+# SPDX-License-Identifier: Apache-2.0
+
 name: 'Validate jackin Agent'
 description: 'Validates a jackin agent repo against the project contract and runs an amd64 CI build check'
 branding:
