@@ -26,6 +26,10 @@ on:
         description: 'Runner label for the manifest merge and sign job'
         type: string
         default: 'ubuntu-24.04'
+      publish:
+        description: 'Push image/cache state, merge the manifest, and sign tags. Set false for a read-only comparison lane.'
+        type: boolean
+        default: true
     secrets:
       registry-username:
         required: true
@@ -38,11 +42,12 @@ on:
 jobs:
   validate-and-config:
     runs-on: ${{ inputs.runner-amd64 }}
+    timeout-minutes: 15
     outputs:
       image: ${{ steps.config.outputs.image }}
       labels: ${{ steps.config.outputs.labels }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Download jackin-role
         env:
@@ -91,8 +96,10 @@ jobs:
             TAG="v${VERSION_CLEAN}"
             VERSION_NUM="${TAG#v}"
             ARCHIVE="jackin-${VERSION_NUM}-${TARGET}.tar.gz"
-            curl -fsSL "https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}" -o "/tmp/${ARCHIVE}"
-            curl -fsSL "https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}.sha256" -o "/tmp/${ARCHIVE}.sha256"
+            curl --proto '=https' --proto-redir '=https' -fsSL \
+              "https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}" -o "/tmp/${ARCHIVE}"
+            curl --proto '=https' --proto-redir '=https' -fsSL \
+              "https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}.sha256" -o "/tmp/${ARCHIVE}.sha256"
             (cd /tmp && sha256sum --check "${ARCHIVE}.sha256")
             tar -xzf "/tmp/${ARCHIVE}" -C /tmp jackin-role
           fi
@@ -124,6 +131,7 @@ jobs:
 
   build:
     needs: validate-and-config
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -134,7 +142,7 @@ jobs:
             runner: ${{ inputs.runner-arm64 }}
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up QEMU
         if: inputs.runner-amd64 == inputs.runner-arm64 && matrix.platform == 'linux/arm64'
@@ -150,7 +158,9 @@ jobs:
         with:
           driver: docker-container
 
-      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+      - name: Build and push digest
+        if: inputs.publish
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         id: build
         with:
           context: .
@@ -164,13 +174,29 @@ jobs:
           secrets: |
             github_token=${{ secrets.github-readonly-token || github.token }}
 
+      - name: Build without publishing
+        if: ${{ !inputs.publish }}
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: false
+          cache-from: |
+            type=registry,ref=${{ needs.validate-and-config.outputs.image }}:buildcache-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+            ${{ matrix.platform == 'linux/amd64' && format('type=gha,scope={0}-.-linux-amd64', github.repository) || '' }}
+          labels: ${{ needs.validate-and-config.outputs.labels }}
+          secrets: |
+            github_token=${{ secrets.github-readonly-token || github.token }}
+
       - name: Export digest
+        if: inputs.publish
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: inputs.publish
         with:
           name: digest-${{ matrix.platform == 'linux/amd64' && 'linux-amd64' || 'linux-arm64' }}
           path: /tmp/digests/*
@@ -178,8 +204,10 @@ jobs:
           retention-days: 1
 
   merge:
+    if: inputs.publish
     needs: [validate-and-config, build]
     runs-on: ${{ inputs.runner-merge }}
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
