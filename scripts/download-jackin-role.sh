@@ -49,30 +49,42 @@ download_from_latest_build() {
 
   echo "Resolving latest preview validator build for ${target}..."
 
-  # Walk recent successful CI runs looking for the first one that actually
-  # uploaded the build-validator artifact. Non-Rust commits (e.g. Docker image
-  # bumps) skip build-validator, so the most-recent successful run may have
-  # no artifacts — scanning avoids a false "not found" failure in that case.
-  run_id=""
-  while IFS= read -r candidate_id; do
-    candidate_artifact_id=$(gh api -X GET "repos/${REPO}/actions/runs/${candidate_id}/artifacts" \
-      --jq "[.artifacts[] | select(.name == \"${artifact_name}\")] | .[0].id // empty")
-    if [ -n "$candidate_artifact_id" ]; then
-      run_id="$candidate_id"
-      artifact_id="$candidate_artifact_id"
-      break
-    fi
-  done < <(gh api -X GET "repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs" \
-    -f branch=main \
-    -f per_page=20 \
-    --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | .[].id')
+  # Prefer the artifacts API by exact name (newest unexpired first). Walking
+  # only the last N successful ci.yml runs misses jackin-role when main CI
+  # stopped packaging it or when more than N green runs landed since the
+  # last package — both of which leave consumers permanently red.
+  artifact_id=$(gh api -X GET "repos/${REPO}/actions/artifacts" \
+    -f name="${artifact_name}" \
+    -F per_page=20 \
+    --jq '[.artifacts[] | select(.expired == false)] | .[0].id // empty')
+  run_id=$(gh api -X GET "repos/${REPO}/actions/artifacts" \
+    -f name="${artifact_name}" \
+    -F per_page=20 \
+    --jq '[.artifacts[] | select(.expired == false)] | .[0].workflow_run.id // empty')
 
-  if [ -z "$run_id" ]; then
+  # Fallback: walk recent successful CI runs (wider page than before) for
+  # the first run that actually uploaded the package.
+  if [ -z "$artifact_id" ]; then
+    while IFS= read -r candidate_id; do
+      candidate_artifact_id=$(gh api -X GET "repos/${REPO}/actions/runs/${candidate_id}/artifacts" \
+        --jq "[.artifacts[] | select(.name == \"${artifact_name}\" and .expired == false)] | .[0].id // empty")
+      if [ -n "$candidate_artifact_id" ]; then
+        run_id="$candidate_id"
+        artifact_id="$candidate_artifact_id"
+        break
+      fi
+    done < <(gh api -X GET "repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs" \
+      -f branch=main \
+      -f per_page=100 \
+      --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | .[].id')
+  fi
+
+  if [ -z "$artifact_id" ]; then
     echo "Failed to resolve a preview validator build from ${REPO}" >&2
     exit 1
   fi
 
-  echo "Using artifact ${artifact_name} from workflow run ${run_id}"
+  echo "Using artifact ${artifact_name} id=${artifact_id}${run_id:+ from workflow run ${run_id}}"
 
   rm -rf "$artifact_dir" "$artifact_zip"
   gh api -H "Accept: application/vnd.github+json" \
