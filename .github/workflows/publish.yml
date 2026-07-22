@@ -96,8 +96,10 @@ jobs:
             TAG="v${VERSION_CLEAN}"
             VERSION_NUM="${TAG#v}"
             ARCHIVE="jackin-${VERSION_NUM}-${TARGET}.tar.gz"
-            curl -fsSL "https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}" -o "/tmp/${ARCHIVE}"
-            curl -fsSL "https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}.sha256" -o "/tmp/${ARCHIVE}.sha256"
+            curl --proto '=https' --proto-redir '=https' -fsSL \
+              "https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}" -o "/tmp/${ARCHIVE}"
+            curl --proto '=https' --proto-redir '=https' -fsSL \
+              "https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}.sha256" -o "/tmp/${ARCHIVE}.sha256"
             (cd /tmp && sha256sum --check "${ARCHIVE}.sha256")
             tar -xzf "/tmp/${ARCHIVE}" -C /tmp jackin-role
           fi
