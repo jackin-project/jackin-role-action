@@ -17,9 +17,6 @@ on:
         default: velnor
         options: [velnor, github, both]
 
-permissions:
-  contents: read
-
 concurrency:
   group: renovate-${{ github.ref }}
   cancel-in-progress: false
@@ -27,6 +24,8 @@ concurrency:
 jobs:
   renovate:
     name: Renovate (${{ matrix.config.lane }})
+    permissions:
+      contents: read
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -46,10 +45,15 @@ jobs:
           key: renovate-${{ matrix.config.lane }}-${{ runner.os }}-${{ github.run_id }}
           restore-keys: |
             renovate-${{ matrix.config.lane }}-${{ runner.os }}-
-      - name: Prepare workspace-owned Renovate cache
+      - name: Grant Renovate ownership without world-write
         run: |
-          install -d -m 0777 .renovate .renovate/cache .renovate/repos
-          chmod -R a+rwX .renovate
+          install -d -m 0755 .renovate .renovate/cache .renovate/repos
+          if [ "$(id -u)" -eq 0 ]; then
+            chown -R 12021:12021 .renovate
+          else
+            sudo chown -R 12021:12021 .renovate
+          fi
+          chmod -R u+rwX,go+rX .renovate
       - name: Self-hosted Renovate
         if: matrix.config.writer
         uses: renovatebot/github-action@3064367f740a1a91cca218698a63902689cce200 # v46.1.20
@@ -70,6 +74,7 @@ jobs:
     needs: [renovate]
     if: always()
     name: Renovate required (${{ matrix.config.lane }})
+    permissions: {}
     timeout-minutes: 5
     strategy:
       fail-fast: false
