@@ -42,10 +42,11 @@ download_from_release() {
 
 download_from_latest_build() {
   local target="$1"
-  local artifact_name="jackin-role-${target}"
+  local artifact_name=""
   local artifact_dir="/tmp/jackin-role-artifact"
   local artifact_zip="/tmp/jackin-role-artifact.zip"
-  local run_id artifact_id archive checksum
+  local run_id="" artifact_id="" archive checksum expected actual
+  local candidate_name artifact_record candidate_id candidate_artifact_id
 
   echo "Resolving latest preview validator build for ${target}..."
 
@@ -53,18 +54,25 @@ download_from_latest_build() {
   # only the last N successful ci.yml runs misses jackin-role when main CI
   # stopped packaging it or when more than N green runs landed since the
   # last package — both of which leave consumers permanently red.
-  artifact_id=$(gh api -X GET "repos/${REPO}/actions/artifacts" \
-    -f name="${artifact_name}" \
-    -F per_page=20 \
-    --jq '[.artifacts[] | select(.expired == false)] | .[0].id // empty')
-  run_id=$(gh api -X GET "repos/${REPO}/actions/artifacts" \
-    -f name="${artifact_name}" \
-    -F per_page=20 \
-    --jq '[.artifacts[] | select(.expired == false)] | .[0].workflow_run.id // empty')
+  for candidate_name in \
+    "preview-GitHub-jackin-${target}" \
+    "jackin-role-${target}"; do
+    artifact_record=$(gh api -X GET "repos/${REPO}/actions/artifacts" \
+      -f name="${candidate_name}" \
+      -F per_page=20 \
+      --jq '[.artifacts[] | select(.expired == false)] | .[0] |
+        if . == null then empty else [.id, .workflow_run.id] | @tsv end' || true)
+    if [ -n "$artifact_record" ]; then
+      artifact_name="$candidate_name"
+      IFS=$'\t' read -r artifact_id run_id <<< "$artifact_record"
+      break
+    fi
+  done
 
   # Fallback: walk recent successful CI runs (wider page than before) for
   # the first run that actually uploaded the package.
   if [ -z "$artifact_id" ]; then
+    artifact_name="jackin-role-${target}"
     while IFS= read -r candidate_id; do
       candidate_artifact_id=$(gh api -X GET "repos/${REPO}/actions/runs/${candidate_id}/artifacts" \
         --jq "[.artifacts[] | select(.name == \"${artifact_name}\" and .expired == false)] | .[0].id // empty")
@@ -91,18 +99,22 @@ download_from_latest_build() {
     "repos/${REPO}/actions/artifacts/${artifact_id}/zip" > "$artifact_zip"
   unzip -oq "$artifact_zip" -d "$artifact_dir"
 
-  archive=$(find "$artifact_dir" -maxdepth 1 -name 'jackin-role-*.tar.gz' -print -quit)
-  checksum=$(find "$artifact_dir" -maxdepth 1 -name 'jackin-role-*.tar.gz.sha256' -print -quit)
+  archive=$(find "$artifact_dir" -maxdepth 1 \
+    \( -name 'jackin-role-*.tar.gz' -o -name 'jackin-*.tar.gz' \) -print -quit)
+  checksum="${archive}.sha256"
 
-  if [ -z "$archive" ] || [ -z "$checksum" ]; then
+  if [ -z "$archive" ] || [ ! -f "$checksum" ]; then
     echo "Artifact ${artifact_name} is missing the packaged validator archive or checksum" >&2
     exit 1
   fi
 
-  (
-    cd "$artifact_dir"
-    sha256sum --check "$(basename "$checksum")"
-  )
+  expected=$(awk 'NR == 1 { print $1 }' "$checksum")
+  actual=$(sha256sum "$archive" | awk '{ print $1 }')
+  if [[ ! "$expected" =~ ^[0-9a-fA-F]{64}$ ]] || [ "$actual" != "${expected,,}" ]; then
+    echo "Artifact ${artifact_name} checksum verification failed" >&2
+    exit 1
+  fi
+  echo "$(basename "$archive"): OK"
   tar -xzf "$archive" -C /tmp jackin-role
 }
 
