@@ -3,5 +3,5 @@
 
 [tools]
 python = "3.14.7"
-uv = "0.11.32"
+uv = "0.12.2"
 "pipx:reuse" = { version = "6.2.0", extras = "charset-normalizer", depends = ["python"] }
