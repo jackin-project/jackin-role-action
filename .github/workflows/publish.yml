@@ -80,7 +80,7 @@ jobs:
               fi
             done < <(gh api -X GET "repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs" \
               -f branch=main -f per_page=20 \
-              --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion == "success")] | .[].id')
+              --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion != "cancelled")] | .[].id')
             [ -z "$run_id" ] && { echo "Failed to resolve preview build" >&2; exit 1; }
             echo "Using artifact ${ARTIFACT_NAME} from workflow run ${run_id}"
             rm -rf "$ARTIFACT_DIR" "$ARTIFACT_ZIP"
