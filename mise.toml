@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Alexey Zhokhov
 # SPDX-License-Identifier: Apache-2.0
 
+[settings]
+lockfile = true
+
 [tools]
 python = "3.14.7"
 uv = "0.12.3"
