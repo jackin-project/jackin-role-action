@@ -57,7 +57,6 @@ jobs:
           set -euo pipefail
           VERSION="${JACKIN_VERSION}"
           REPO="jackin-project/jackin"
-          WORKFLOW_FILE="ci.yml"
 
           case "$(uname -m)" in
             x86_64)  TARGET="x86_64-unknown-linux-gnu" ;;
@@ -66,31 +65,24 @@ jobs:
           esac
 
           if [ "$VERSION" = "latest" ] || [ "$VERSION" = "latest-build" ]; then
-            ARTIFACT_NAME="jackin-role-${TARGET}"
-            ARTIFACT_DIR="/tmp/jackin-role-artifact"
-            ARTIFACT_ZIP="/tmp/jackin-role-artifact.zip"
-            run_id=""
-            while IFS= read -r candidate_id; do
-              candidate_artifact_id=$(gh api -X GET "repos/${REPO}/actions/runs/${candidate_id}/artifacts" \
-                --jq "[.artifacts[] | select(.name == \"${ARTIFACT_NAME}\")] | .[0].id // empty")
-              if [ -n "$candidate_artifact_id" ]; then
-                run_id="$candidate_id"
-                artifact_id="$candidate_artifact_id"
-                break
-              fi
-            done < <(gh api -X GET "repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs" \
-              -f branch=main -f per_page=20 \
-              --jq '[.workflow_runs[] | select(.status == "completed" and .conclusion != "cancelled")] | .[].id')
-            [ -z "$run_id" ] && { echo "Failed to resolve preview build" >&2; exit 1; }
-            echo "Using artifact ${ARTIFACT_NAME} from workflow run ${run_id}"
-            rm -rf "$ARTIFACT_DIR" "$ARTIFACT_ZIP"
-            gh api -H "Accept: application/vnd.github+json" \
-              "repos/${REPO}/actions/artifacts/${artifact_id}/zip" > "$ARTIFACT_ZIP"
-            unzip -oq "$ARTIFACT_ZIP" -d "$ARTIFACT_DIR"
-            archive=$(find "$ARTIFACT_DIR" -maxdepth 1 -name 'jackin-role-*.tar.gz' -print -quit)
-            checksum=$(find "$ARTIFACT_DIR" -maxdepth 1 -name 'jackin-role-*.tar.gz.sha256' -print -quit)
-            (cd "$ARTIFACT_DIR" && sha256sum --check "$(basename "$checksum")")
-            tar -xzf "$archive" -C /tmp jackin-role
+            ARCHIVE="jackin-${TARGET}.tar.gz"
+            SOURCE_SHA=$(gh release view preview --repo "$REPO" \
+              --json targetCommitish --jq .targetCommitish)
+            [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "Preview release target is not a full commit SHA" >&2
+              exit 1
+            }
+            rm -f "/tmp/${ARCHIVE}" "/tmp/${ARCHIVE}.sha256"
+            gh release download preview --repo "$REPO" --dir /tmp \
+              --pattern "$ARCHIVE" --pattern "${ARCHIVE}.sha256"
+            (cd /tmp && sha256sum --check "${ARCHIVE}.sha256")
+            gh attestation verify "/tmp/${ARCHIVE}" \
+              --repo "$REPO" \
+              --signer-workflow jackin-project/jackin/.github/workflows/preview.yml \
+              --source-ref refs/heads/main \
+              --source-digest "$SOURCE_SHA" \
+              --deny-self-hosted-runners >/dev/null
+            tar -xzf "/tmp/${ARCHIVE}" -C /tmp jackin-role
           else
             VERSION_CLEAN="${VERSION#v}"
             TAG="v${VERSION_CLEAN}"
