@@ -17,15 +17,15 @@ on:
       runner-amd64:
         description: 'Runner label for linux/amd64 build job'
         type: string
-        default: 'ubuntu-24.04'
+        default: 'velnor-target-mvp'
       runner-arm64:
         description: 'Runner label for linux/arm64 build job. When set to the same value as runner-amd64, QEMU is used for cross-platform emulation.'
         type: string
-        default: 'ubuntu-24.04-arm'
+        default: 'velnor-target-mvp'
       runner-merge:
         description: 'Runner label for the manifest merge and sign job'
         type: string
-        default: 'ubuntu-24.04'
+        default: 'velnor-target-mvp'
       publish:
         description: 'Push image/cache state, merge the manifest, and sign tags. Set false for a read-only comparison lane.'
         type: boolean
