@@ -30,6 +30,10 @@ on:
         description: 'Push image/cache state, merge the manifest, and sign tags. Set false for a read-only comparison lane.'
         type: boolean
         default: true
+      preview-attestation-lane:
+        description: 'Runner lane that produced the preview artifact: velnor (default) or github'
+        type: string
+        default: 'velnor'
     secrets:
       registry-username:
         required: true
@@ -57,8 +61,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           JACKIN_VERSION: ${{ inputs.jackin-version }}
+          EXPECTED_RUNNER_ENVIRONMENT: ${{ inputs.preview-attestation-lane == 'velnor' && 'self-hosted' || inputs.preview-attestation-lane == 'github' && 'github-hosted' || 'invalid' }}
         run: |
           set -euo pipefail
+          if [ "$EXPECTED_RUNNER_ENVIRONMENT" = "invalid" ]; then
+            echo "Invalid preview-attestation-lane '${{ inputs.preview-attestation-lane }}': expected velnor or github" >&2
+            exit 2
+          fi
           VERSION="${JACKIN_VERSION}"
           REPO="jackin-project/jackin"
 
@@ -87,8 +96,8 @@ jobs:
               --source-digest "$SOURCE_SHA" \
               --format json \
               --jq '[.[].verificationResult.signature.certificate.runnerEnvironment] | unique | if length == 1 then .[0] else "" end')
-            if [ "$RUNNER_ENVIRONMENT" != "self-hosted" ]; then
-              echo "Preview attestation runner mismatch: expected Velnor self-hosted provenance, got '${RUNNER_ENVIRONMENT:-missing}'" >&2
+            if [ "$RUNNER_ENVIRONMENT" != "$EXPECTED_RUNNER_ENVIRONMENT" ]; then
+              echo "Preview attestation runner mismatch for lane '${{ inputs.preview-attestation-lane }}': expected '${EXPECTED_RUNNER_ENVIRONMENT}', got '${RUNNER_ENVIRONMENT:-missing}'" >&2
               exit 1
             fi
             tar -xzf "/tmp/${ARCHIVE}" -C /tmp jackin-role
