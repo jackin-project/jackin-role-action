@@ -80,12 +80,17 @@ jobs:
             gh release download preview --repo "$REPO" --dir /tmp \
               --pattern "$ARCHIVE" --pattern "${ARCHIVE}.sha256"
             (cd /tmp && sha256sum --check "${ARCHIVE}.sha256")
-            gh attestation verify "/tmp/${ARCHIVE}" \
+            RUNNER_ENVIRONMENT=$(gh attestation verify "/tmp/${ARCHIVE}" \
               --repo "$REPO" \
               --signer-workflow jackin-project/jackin/.github/workflows/preview.yml \
               --source-ref refs/heads/main \
               --source-digest "$SOURCE_SHA" \
-              --deny-self-hosted-runners >/dev/null
+              --format json \
+              --jq '[.[].verificationResult.signature.certificate.runnerEnvironment] | unique | if length == 1 then .[0] else "" end')
+            if [ "$RUNNER_ENVIRONMENT" != "self-hosted" ]; then
+              echo "Preview attestation runner mismatch: expected Velnor self-hosted provenance, got '${RUNNER_ENVIRONMENT:-missing}'" >&2
+              exit 1
+            fi
             tar -xzf "/tmp/${ARCHIVE}" -C /tmp jackin-role
           else
             VERSION_CLEAN="${VERSION#v}"
