@@ -39,6 +39,10 @@ on:
         required: false
         description: 'Read-only GitHub token for authenticated API access (avoids rate limiting when downloading dependencies)'
 
+concurrency:
+  group: publish-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   validate-and-config:
     runs-on: ${{ inputs.runner-amd64 }}
