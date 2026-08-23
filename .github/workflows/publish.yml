@@ -26,10 +26,6 @@ on:
         description: 'Runner label for the manifest merge and sign job'
         type: string
         default: 'velnor-target-mvp'
-      artifact-scope:
-        description: 'Namespace for the per-run digest artifacts. Artifact names are run-scoped, so when this reusable is called more than once in a single run (lanes=both) each call must use a distinct scope or the same-named uploads collide and corrupt the merge-side download. Defaults to runner-merge, which differs per lane in every multi-lane caller; set explicitly when two calls share runner labels.'
-        type: string
-        default: ''
       publish:
         description: 'Push image/cache state, merge the manifest, and sign tags. Set false for a read-only comparison lane.'
         type: boolean
@@ -168,7 +164,8 @@ jobs:
           username: ${{ secrets.registry-username }}
           password: ${{ secrets.registry-password }}
 
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      # Fleet capability manifest v9 admits only this reviewed v4 ref.
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
         with:
           driver: docker-container
 
@@ -207,14 +204,17 @@ jobs:
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+          # Non-empty file: the digest hex as content, keyed by digest as name.
+          echo "${digest#sha256:}" > "/tmp/digests/${digest#sha256:}"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: inputs.publish
         with:
-          # Scoped per reusable call: two calls in one run (lanes=both) must
-          # never upload same-named artifacts.
-          name: digest-${{ inputs.artifact-scope || inputs.runner-merge }}-${{ matrix.platform == 'linux/amd64' && 'linux-amd64' || 'linux-arm64' }}
+          # Unique per run and per reusable call: same-named uploads from two
+          # calls (lanes=both) or concurrent runs collide in the artifact
+          # store and corrupt the merge-side download ("invalid Zip archive:
+          # EOCD"). runner-merge differs per lane in every multi-lane caller.
+          name: digest-${{ github.run_id }}-${{ inputs.runner-merge }}-${{ matrix.platform == 'linux/amd64' && 'linux-amd64' || 'linux-arm64' }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -237,13 +237,14 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: /tmp/digests
-          # Only this call's scope: in lanes=both runs the other lane's digest
-          # artifacts also match an unscoped digest-* pattern and would mix
-          # foreign digests into this lane's manifest.
-          pattern: digest-${{ inputs.artifact-scope || inputs.runner-merge }}-*
+          # Same identity as the upload: this run, this call only. An unscoped
+          # digest-* pattern would also match foreign lanes' and foreign runs'
+          # artifacts and mix their digests into this lane's manifest.
+          pattern: digest-${{ github.run_id }}-${{ inputs.runner-merge }}-*
           merge-multiple: true
 
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      # Fleet capability manifest v9 admits only this reviewed v4 ref.
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
         with:
           driver: docker-container
 
