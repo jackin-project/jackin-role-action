@@ -173,6 +173,14 @@ jobs:
         if: inputs.publish
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         id: build
+        env:
+          # Buildx build-record uploads produce gzip (.dockerbuild) artifacts,
+          # not zips. The Velnor native download-artifact pre-opens every run
+          # artifact as a zip before pattern filtering, so a single
+          # .dockerbuild artifact fails any Velnor download-artifact step in
+          # the run with "invalid Zip archive: EOCD". Never upload records.
+          DOCKER_BUILD_SUMMARY: "false"
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
         with:
           context: .
           platforms: ${{ matrix.platform }}
@@ -188,6 +196,10 @@ jobs:
       - name: Build without publishing
         if: ${{ !inputs.publish }}
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        env:
+          # See the publish step: never upload gzip .dockerbuild build records.
+          DOCKER_BUILD_SUMMARY: "false"
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
         with:
           context: .
           platforms: ${{ matrix.platform }}
