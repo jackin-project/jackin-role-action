@@ -30,10 +30,6 @@ on:
         description: 'Push image/cache state, merge the manifest, and sign tags. Set false for a read-only comparison lane.'
         type: boolean
         default: true
-      preview-attestation-lane:
-        description: 'Runner lane that produced the preview artifact: velnor (default) or github'
-        type: string
-        default: 'velnor'
     secrets:
       registry-username:
         required: true
@@ -61,13 +57,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           JACKIN_VERSION: ${{ inputs.jackin-version }}
-          EXPECTED_RUNNER_ENVIRONMENT: ${{ inputs.preview-attestation-lane == 'velnor' && 'self-hosted' || inputs.preview-attestation-lane == 'github' && 'github-hosted' || 'invalid' }}
         run: |
           set -euo pipefail
-          if [ "$EXPECTED_RUNNER_ENVIRONMENT" = "invalid" ]; then
-            echo "Invalid preview-attestation-lane '${{ inputs.preview-attestation-lane }}': expected velnor or github" >&2
-            exit 2
-          fi
           VERSION="${JACKIN_VERSION}"
           REPO="jackin-project/jackin"
 
@@ -96,10 +87,22 @@ jobs:
               --source-digest "$SOURCE_SHA" \
               --format json \
               --jq '[.[].verificationResult.signature.certificate.runnerEnvironment] | unique | if length == 1 then .[0] else "" end')
-            if [ "$RUNNER_ENVIRONMENT" != "$EXPECTED_RUNNER_ENVIRONMENT" ]; then
-              echo "Preview attestation runner mismatch for lane '${{ inputs.preview-attestation-lane }}': expected '${EXPECTED_RUNNER_ENVIRONMENT}', got '${RUNNER_ENVIRONMENT:-missing}'" >&2
-              exit 1
-            fi
+            # The rolling preview release is republished by whichever lane ran
+            # jackin's preview workflow last (fleet policy routes push events
+            # to the GitHub lane), so the recorded runner environment varies
+            # between self-hosted and github-hosted. Provenance is already
+            # proven by the signer workflow, source ref/digest, and the
+            # checked sha256: both lanes are trusted builders of the same
+            # digest-pinned artifact. Admit either lane's attestation so the
+            # same workflow definition stays green on either lane; still
+            # reject unknown/missing runner environments.
+            case "$RUNNER_ENVIRONMENT" in
+              self-hosted|github-hosted) ;;
+              *)
+                echo "Preview attestation has unexpected runner environment '${RUNNER_ENVIRONMENT:-missing}': expected 'self-hosted' or 'github-hosted'" >&2
+                exit 1
+                ;;
+            esac
             tar -xzf "/tmp/${ARCHIVE}" -C /tmp jackin-role
           else
             VERSION_CLEAN="${VERSION#v}"
