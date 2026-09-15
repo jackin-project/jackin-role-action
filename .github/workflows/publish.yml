@@ -174,7 +174,7 @@ jobs:
 
       - name: Build and push digest
         if: inputs.publish
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         id: build
         env:
           # Buildx build-record uploads produce gzip (.dockerbuild) artifacts,
@@ -198,7 +198,7 @@ jobs:
 
       - name: Build without publishing
         if: ${{ !inputs.publish }}
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         env:
           # See the publish step: never upload gzip .dockerbuild build records.
           DOCKER_BUILD_SUMMARY: "false"
