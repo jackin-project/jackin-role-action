@@ -19,7 +19,7 @@ kind = "docs"
 root = "."
 watch = ["REUSE.toml", "LICENSES/**", "mise.toml", "mise.lock"]
 ci_tasks = ["ci"]
-mise_tools = ["python", "pipx:reuse"]
+mise_tools = ["python", "uv", "pipx:reuse"]
 
 [[static_files]]
 file = ".github/workflows/ci-unit-docs.yml"

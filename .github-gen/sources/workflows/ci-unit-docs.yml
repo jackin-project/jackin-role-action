@@ -199,7 +199,7 @@ jobs:
       - name: Set up Mise tools
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
-          install_args: python pipx:reuse
+          install_args: python uv pipx:reuse
           cache: true
           cache_save: ${{ github.ref == 'refs/heads/main' }}
       - name: Mark tool bootstrap end
